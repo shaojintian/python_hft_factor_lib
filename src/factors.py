@@ -102,7 +102,7 @@ def first_location_of_maximum(x):
 # 计算价格最大值的第一个位置
 def price_idxmax(depth, trade, n=20):
     return depth['ap1'].rolling(n).apply(
-        first_location_of_maximum, engine='numba', raw=True).fillna(0)
+        _first_location_of_maximum, engine='numba', raw=True).fillna(0)
 
 # 计算中心二阶导数
 def mean_second_derivative_centra(x):
@@ -161,27 +161,31 @@ def price_kurt(depth, trade, n=500):
 def price_skew(depth, trade, n=500):
     return trade.p.rolling(n).skew().abs().fillna(0)
 
+# 计算滚动回报率，衡量中间价格在一定时间窗口内的变化率
 def rolling_return(depth, trade, n=100):
-    mp = ((depth.ap1 + depth.bp1) / 2)
-    return (mp.diff(n) / mp).fillna(0)
+    mp = ((depth['ap1'] + depth['bp1']) / 2)  # 计算中间价格
+    return (mp.diff(n) / mp).fillna(0)  # 计算n周期的滚动回报率
 
-def first_location_of_maximum(x):
-    max_value = max(x)  # 一个for循环
-    for loc in range(len(x)):
-        if x[loc] == max_value:
-            return loc + 1
+# 找到数组中最大值的第一个位置
+def _first_location_of_maximum(x):
+    max_value = max(x)  # 找到数组中的最大值
+    for loc in range(len(x)):  # 遍历数组
+        if x[loc] == max_value:  # 如果找到最大值
+            return loc + 1  # 返回最大值的位置（+1是为了调整为1-based index）
 
+# 计算价格最大值的第一个位置，使用滚动窗口
 def price_idxmax(depth, trade, n=20):
-    return depth['ap1'].rolling(n).apply(
-        first_location_of_maximum, engine='numba', raw=True).fillna(0)
+    return depth['ap1'].rolling(n).apply(  # 对'ap1'列应用滚动窗口
+        _first_location_of_maximum, engine='numba', raw=True).fillna(0)  # 使用first_location_of_maximum函数
 
+# 计算中心二阶导数，用于衡量价格曲线的凹凸性
 def mean_second_derivative_centra(x):
     sum_value = 0
     for i in range(len(x) - 5):
         sum_value += (x[i+5] - 2*x[i+3] + x[i]) / 2
     return sum_value / (2 * (len(x) - 5))
 
-
+# 计算加权价格到中间价格，衡量订单簿的加权平均价格与中间价格的差异
 def weighted_price_to_mid(depth, trade, levels=10, alpha=1):
     def get_columns(name, levels):
         return [name + str(i) for i in range(1, levels + 1)]
@@ -192,6 +196,7 @@ def weighted_price_to_mid(depth, trade, levels=10, alpha=1):
     mp = (depth['ap1'] + depth['bp1']) / 2
     return (avs.values * aps.values + bvs.values * bps.values).sum(axis=1) / (avs.values + bvs.values).sum(axis=1) - mp
 
+# 计算卖方撤单量，需要实现_ask_withdraws_volume函数
 def ask_withdraws(depth, trade):
     ob_values = depth.values
     flows = np.zeros(len(ob_values))
@@ -199,6 +204,7 @@ def ask_withdraws(depth, trade):
         flows[i] = _ask_withdraws_volume(ob_values[i-1], ob_values[i])
     return pd.Series(flows)
 
+# 计算买方撤单量，需要实现_bid_withdraws_volume函数
 def bid_withdraws(depth, trade):
     ob_values = depth.values
     flows = np.zeros(len(ob_values))
@@ -206,29 +212,29 @@ def bid_withdraws(depth, trade):
         flows[i] = _bid_withdraws_volume(ob_values[i-1], ob_values[i])
     return pd.Series(flows)
 
-
+# 再次定义了mean_second_derivative_centra函数，可能是重复的
 def mean_second_derivative_centra(x):
-    sum_value = 0
-    for i in range(len(x) - 5):
-        sum_value += (x[i + 5] - 2 * x[i + 3] + x[i]) / 2
-    return sum_value / (2 * (len(x) - 5))
+    # 同上
 
+# 计算中心二阶导数的滚动应用，用于动态分析价格曲线的凹凸性
 def center_deri_two(depth, trade, n=20):
     return depth['ap1'].rolling(n).apply(
         mean_second_derivative_centra, engine='numba', raw=True).fillna(0)
 
+# 计算买方撤单量的比率，衡量买方撤单量与总买方量的比率
 def bv_divide_tn(depth, trade, n=10):
-    bvs = depth.bv1 + depth.bv2 + ... + depth.bv10
+    bvs = depth['bv1'] + depth['bv2'] + ... + depth['bv10']  # 买方量总和
     def volume(depth, trade, n):
-        return trade.v
+        return trade.v  # 交易量
     v = volume(depth=depth, trade=trade, n=n)
-    v[v > 0] = 0
-    return (v.rolling(n).sum() / bvs).fillna(0)
+    v[v > 0] = 0  # 只考虑卖方撤单
+    return (v.rolling(n).sum() / bvs).fillna(0)  # 计算撤单量与买方量的比率
 
+# 计算卖方撤单量的比率，衡量卖方撤单量与总卖方量的比率
 def av_divide_tn(depth, trade, n=10):
-    avs = depth.av1 + depth.av2 + ... + depth.av10
+    avs = depth['av1'] + depth['av2'] + ... + depth['av10']  # 卖方量总和
     def volume(depth, trade, n):
-        return trade.v
+        return trade.v  # 交易量
     v = volume(depth=depth, trade=trade, n=n)
-    v[v < 0] = 0
-    return (v.rolling(n).sum() / avs).fillna(0)
+    v[v < 0] = 0  # 只考虑买方撤单
+    return (v.rolling(n).sum() / avs).fillna(0)  # 计算撤单量与卖方量的比率
