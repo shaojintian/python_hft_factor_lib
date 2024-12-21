@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-import pandas as pd
-import numpy as np
 
 # 计算COFI指标，衡量买卖力量的不平衡
 def cofi(depth, trade):
